@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en" x-data="app()" x-init="init()">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Remote Work Auto-Apply</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .score-high { background: #dcfce7; color: #166534; }
+    .score-mid  { background: #fef9c3; color: #854d0e; }
+    .score-low  { background: #fee2e2; color: #991b1b; }
+    .source-remoteok  { background: #dbeafe; color: #1e40af; }
+    .source-wellfound { background: #ede9fe; color: #4c1d95; }
+    .source-naukri    { background: #fce7f3; color: #9d174d; }
+    .source-instahyre { background: #d1fae5; color: #065f46; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans">
+
+  <!-- Header -->
+  <header class="bg-white border-b shadow-sm sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-xl font-bold text-indigo-700">AutoApply</span>
+        <span class="text-gray-400 text-sm">Job Discovery Dashboard</span>
+      </div>
+
+      <!-- Stats chips -->
+      <div x-show="stats" class="flex gap-2 flex-wrap" x-cloak>
+        <span class="bg-gray-100 text-gray-700 text-xs font-medium px-3 py-1 rounded-full">
+          <span x-text="stats.total || 0"></span> total
+        </span>
+        <span class="bg-green-100 text-green-800 text-xs font-medium px-3 py-1 rounded-full">
+          <span x-text="(stats.by_status?.shortlisted || 0)"></span> shortlisted
+        </span>
+        <span class="bg-blue-100 text-blue-800 text-xs font-medium px-3 py-1 rounded-full">
+          <span x-text="(stats.by_status?.applied || 0)"></span> applied
+        </span>
+        <span class="bg-red-100 text-red-800 text-xs font-medium px-3 py-1 rounded-full">
+          <span x-text="(stats.by_status?.rejected || 0)"></span> rejected
+        </span>
+        <span x-show="stats.avg_score" class="bg-indigo-100 text-indigo-800 text-xs font-medium px-3 py-1 rounded-full">
+          avg score: <span x-text="stats.avg_score"></span>
+        </span>
+      </div>
+
+      <!-- Scrape button -->
+      <button
+        @click="triggerScrape()"
+        :disabled="scraping"
+        class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-sm font-medium px-4 py-2 rounded-lg transition"
+      >
+        <span x-show="!scraping">Scrape Jobs</span>
+        <span x-show="scraping" x-cloak>
+          <svg class="inline w-4 h-4 mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Scraping...
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <div class="max-w-7xl mx-auto px-4 py-6 flex gap-6">
+
+    <!-- Left: Filter bar + Job list -->
+    <div class="flex-1 min-w-0">
+
+      <!-- Filter bar -->
+      <div class="bg-white rounded-xl shadow-sm border p-4 mb-4 flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Search</label>
+          <input
+            type="text"
+            x-model.debounce.400ms="filters.search"
+            @input="loadJobs()"
+            placeholder="title, company, keyword..."
+            class="border rounded-lg px-3 py-1.5 text-sm w-52 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Source</label>
+          <select x-model="filters.source" @change="loadJobs()" class="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <option value="">All sources</option>
+            <option value="remoteok">RemoteOK</option>
+            <option value="wellfound">Wellfound</option>
+            <option value="naukri">Naukri</option>
+            <option value="instahyre">InstaHyre</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Status</label>
+          <select x-model="filters.status" @change="loadJobs()" class="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="shortlisted">Shortlisted</option>
+            <option value="applied">Applied</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[160px]">
+          <label class="block text-xs text-gray-500 mb-1">
+            Min score: <span x-text="filters.min_score"></span>
+          </label>
+          <input
+            type="range" min="0" max="100" step="5"
+            x-model="filters.min_score"
+            @input="loadJobs()"
+            class="w-full accent-indigo-600"
+          />
+        </div>
+        <button @click="resetFilters()" class="text-xs text-gray-500 hover:text-gray-800 underline">Reset</button>
+      </div>
+
+      <!-- Scrape result toast -->
+      <div
+        x-show="scrapeResult"
+        x-transition
+        x-cloak
+        class="mb-4 p-3 rounded-lg text-sm"
+        :class="scrapeResult?.errors?.length ? 'bg-yellow-50 border border-yellow-200 text-yellow-800' : 'bg-green-50 border border-green-200 text-green-800'"
+      >
+        <span x-text="scrapeResult ? `Fetched: ${scrapeResult.fetched}, New: ${scrapeResult.new}, Scored: ${scrapeResult.scored}` : ''"></span>
+        <span x-show="scrapeResult?.errors?.length" class="ml-2 text-yellow-700">
+          (<span x-text="scrapeResult?.errors?.length"></span> errors)
+        </span>
+      </div>
+
+      <!-- Loading state -->
+      <div x-show="loading" class="text-center py-12 text-gray-400">
+        <svg class="inline w-8 h-8 animate-spin mb-2" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <p>Loading jobs...</p>
+      </div>
+
+      <!-- Empty state -->
+      <div x-show="!loading && jobs.length === 0" class="text-center py-16 text-gray-400">
+        <p class="text-lg mb-2">No jobs found</p>
+        <p class="text-sm">Try scraping jobs or adjusting your filters.</p>
+      </div>
+
+      <!-- Job list -->
+      <div class="space-y-3">
+        <template x-for="job in jobs" :key="job.id">
+          <div
+            @click="selectJob(job)"
+            class="bg-white rounded-xl border shadow-sm p-4 cursor-pointer hover:border-indigo-300 hover:shadow transition"
+            :class="selectedJob?.id === job.id ? 'border-indigo-400 ring-1 ring-indigo-200' : ''"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <h3 class="font-semibold text-gray-900 truncate" x-text="job.title"></h3>
+                  <span
+                    class="text-xs font-medium px-2 py-0.5 rounded-full"
+                    :class="`source-${job.source}`"
+                    x-text="job.source"
+                  ></span>
+                </div>
+                <p class="text-sm text-gray-600 mt-0.5" x-text="job.company"></p>
+                <div class="flex flex-wrap gap-2 mt-1.5 text-xs text-gray-500">
+                  <span x-text="job.location"></span>
+                  <span x-show="job.salary_min">•
+                    <span x-text="formatSalary(job)"></span>
+                  </span>
+                  <span x-show="job.posted_at">•
+                    <span x-text="timeAgo(job.posted_at)"></span>
+                  </span>
+                </div>
+              </div>
+              <div class="flex flex-col items-end gap-2 shrink-0">
+                <span
+                  x-show="job.score !== null && job.score !== undefined"
+                  class="text-sm font-bold px-2.5 py-1 rounded-lg"
+                  :class="scoreClass(job.score)"
+                  x-text="Math.round(job.score)"
+                ></span>
+                <span
+                  class="text-xs px-2 py-0.5 rounded-full border"
+                  :class="statusClass(job.status)"
+                  x-text="job.status"
+                ></span>
+              </div>
+            </div>
+
+            <!-- Quick action buttons -->
+            <div class="flex gap-2 mt-3" @click.stop>
+              <button
+                @click="updateStatus(job, 'shortlisted')"
+                class="text-xs bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 px-3 py-1 rounded-lg transition"
+                :class="job.status === 'shortlisted' ? 'ring-2 ring-green-400' : ''"
+              >Shortlist</button>
+              <button
+                @click="updateStatus(job, 'rejected')"
+                class="text-xs bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-1 rounded-lg transition"
+                :class="job.status === 'rejected' ? 'ring-2 ring-red-400' : ''"
+              >Reject</button>
+              <button
+                @click="updateStatus(job, 'applied')"
+                class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1 rounded-lg transition"
+                :class="job.status === 'applied' ? 'ring-2 ring-blue-400' : ''"
+              >Applied</button>
+              <a
+                :href="job.url"
+                target="_blank"
+                class="ml-auto text-xs text-indigo-600 hover:text-indigo-800 underline"
+                @click.stop
+              >Open &rarr;</a>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Pagination -->
+      <div class="flex items-center justify-between mt-6" x-show="total > limit">
+        <button
+          @click="prevPage()"
+          :disabled="offset === 0"
+          class="text-sm px-4 py-2 border rounded-lg disabled:opacity-40 hover:bg-gray-50"
+        >Previous</button>
+        <span class="text-sm text-gray-500">
+          <span x-text="offset + 1"></span>–<span x-text="Math.min(offset + limit, total)"></span>
+          of <span x-text="total"></span>
+        </span>
+        <button
+          @click="nextPage()"
+          :disabled="offset + limit >= total"
+          class="text-sm px-4 py-2 border rounded-lg disabled:opacity-40 hover:bg-gray-50"
+        >Next</button>
+      </div>
+    </div>
+
+    <!-- Right: Job detail panel -->
+    <div
+      x-show="selectedJob"
+      x-cloak
+      class="w-[420px] shrink-0 sticky top-20 self-start"
+    >
+      <div class="bg-white rounded-xl border shadow-sm overflow-hidden max-h-[calc(100vh-6rem)] flex flex-col">
+        <!-- Detail header -->
+        <div class="p-4 border-b bg-gray-50 flex items-start justify-between">
+          <div>
+            <h2 class="font-bold text-gray-900" x-text="selectedJob?.title"></h2>
+            <p class="text-sm text-gray-600" x-text="selectedJob?.company"></p>
+            <div class="flex gap-2 mt-1 flex-wrap text-xs text-gray-500">
+              <span x-text="selectedJob?.location"></span>
+              <span x-show="selectedJob?.salary_min">•
+                <span x-text="selectedJob ? formatSalary(selectedJob) : ''"></span>
+              </span>
+            </div>
+          </div>
+          <button @click="selectedJob = null" class="text-gray-400 hover:text-gray-700 text-lg leading-none">&times;</button>
+        </div>
+
+        <!-- Score detail -->
+        <div class="p-4 border-b" x-show="selectedJobDetail?.score_detail">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="text-2xl font-bold"
+              :class="scoreClass(selectedJobDetail?.score)"
+              x-text="selectedJobDetail?.score !== undefined ? Math.round(selectedJobDetail.score) : ''"
+            ></span>
+            <span class="text-sm text-gray-600" x-text="selectedJobDetail?.score_detail?.reasoning"></span>
+          </div>
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <div x-show="selectedJobDetail?.score_detail?.pros?.length">
+              <p class="text-xs font-semibold text-green-700 mb-1">Pros</p>
+              <ul class="space-y-1">
+                <template x-for="pro in (selectedJobDetail?.score_detail?.pros || [])">
+                  <li class="text-xs text-gray-600 flex gap-1"><span class="text-green-500">+</span><span x-text="pro"></span></li>
+                </template>
+              </ul>
+            </div>
+            <div x-show="selectedJobDetail?.score_detail?.cons?.length">
+              <p class="text-xs font-semibold text-red-700 mb-1">Cons</p>
+              <ul class="space-y-1">
+                <template x-for="con in (selectedJobDetail?.score_detail?.cons || [])">
+                  <li class="text-xs text-gray-600 flex gap-1"><span class="text-red-400">-</span><span x-text="con"></span></li>
+                </template>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="p-4 border-b flex gap-2">
+          <button
+            @click="updateStatus(selectedJob, 'shortlisted'); loadJobDetail(selectedJob.id)"
+            class="flex-1 text-sm bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition"
+          >Shortlist</button>
+          <button
+            @click="updateStatus(selectedJob, 'rejected'); loadJobDetail(selectedJob.id)"
+            class="flex-1 text-sm bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg transition"
+          >Reject</button>
+          <button
+            @click="updateStatus(selectedJob, 'applied'); loadJobDetail(selectedJob.id)"
+            class="flex-1 text-sm bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition"
+          >Mark Applied</button>
+        </div>
+
+        <!-- Job description -->
+        <div class="p-4 overflow-y-auto flex-1">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-gray-700">Job Description</h3>
+            <a :href="selectedJob?.url" target="_blank" class="text-xs text-indigo-600 hover:underline">Open original &rarr;</a>
+          </div>
+          <div
+            class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"
+            x-text="selectedJobDetail?.description || 'Loading...'"
+          ></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+<script>
+function app() {
+  return {
+    jobs: [],
+    total: 0,
+    loading: false,
+    scraping: false,
+    scrapeResult: null,
+    stats: null,
+    selectedJob: null,
+    selectedJobDetail: null,
+    offset: 0,
+    limit: 20,
+    filters: {
+      search: '',
+      source: '',
+      status: '',
+      min_score: 0,
+    },
+    pollTimer: null,
+
+    async init() {
+      await Promise.all([this.loadJobs(), this.loadStats()]);
+    },
+
+    async loadJobs() {
+      this.loading = true;
+      const params = new URLSearchParams({
+        limit: this.limit,
+        offset: this.offset,
+      });
+      if (this.filters.search) params.set('search', this.filters.search);
+      if (this.filters.source) params.set('source', this.filters.source);
+      if (this.filters.status) params.set('status', this.filters.status);
+      if (this.filters.min_score > 0) params.set('min_score', this.filters.min_score);
+
+      try {
+        const res = await fetch(`/api/jobs?${params}`);
+        const data = await res.json();
+        this.jobs = data.jobs;
+        this.total = data.total;
+      } catch (e) {
+        console.error('Failed to load jobs', e);
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async loadStats() {
+      try {
+        const res = await fetch('/api/stats');
+        this.stats = await res.json();
+      } catch (e) {
+        console.error('Failed to load stats', e);
+      }
+    },
+
+    async selectJob(job) {
+      this.selectedJob = job;
+      this.selectedJobDetail = null;
+      await this.loadJobDetail(job.id);
+    },
+
+    async loadJobDetail(jobId) {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        this.selectedJobDetail = await res.json();
+      } catch (e) {
+        console.error('Failed to load job detail', e);
+      }
+    },
+
+    async updateStatus(job, status) {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+        const updated = await res.json();
+        job.status = updated.status;
+        if (this.selectedJob?.id === job.id) {
+          this.selectedJob.status = updated.status;
+        }
+        await this.loadStats();
+      } catch (e) {
+        console.error('Failed to update status', e);
+      }
+    },
+
+    async triggerScrape() {
+      this.scraping = true;
+      this.scrapeResult = null;
+      try {
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sources: ['remoteok', 'wellfound', 'naukri', 'instahyre'], score: true }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert(err.detail || 'Scrape failed');
+          return;
+        }
+        this.pollScrapeStatus();
+      } catch (e) {
+        console.error('Scrape trigger failed', e);
+        this.scraping = false;
+      }
+    },
+
+    pollScrapeStatus() {
+      const poll = async () => {
+        try {
+          const res = await fetch('/api/scrape/status');
+          const data = await res.json();
+          if (!data.running) {
+            this.scraping = false;
+            this.scrapeResult = data.last_result;
+            await Promise.all([this.loadJobs(), this.loadStats()]);
+          } else {
+            this.pollTimer = setTimeout(poll, 2000);
+          }
+        } catch {
+          this.scraping = false;
+        }
+      };
+      this.pollTimer = setTimeout(poll, 2000);
+    },
+
+    resetFilters() {
+      this.filters = { search: '', source: '', status: '', min_score: 0 };
+      this.offset = 0;
+      this.loadJobs();
+    },
+
+    nextPage() {
+      this.offset = Math.min(this.offset + this.limit, this.total - 1);
+      this.loadJobs();
+    },
+
+    prevPage() {
+      this.offset = Math.max(0, this.offset - this.limit);
+      this.loadJobs();
+    },
+
+    scoreClass(score) {
+      if (score === null || score === undefined) return 'bg-gray-100 text-gray-500';
+      if (score >= 70) return 'score-high';
+      if (score >= 45) return 'score-mid';
+      return 'score-low';
+    },
+
+    statusClass(status) {
+      const map = {
+        pending: 'bg-gray-50 text-gray-500 border-gray-200',
+        reviewed: 'bg-blue-50 text-blue-600 border-blue-200',
+        shortlisted: 'bg-green-50 text-green-700 border-green-200',
+        applied: 'bg-purple-50 text-purple-700 border-purple-200',
+        rejected: 'bg-red-50 text-red-600 border-red-200',
+      };
+      return map[status] || map.pending;
+    },
+
+    formatSalary(job) {
+      if (!job.salary_min) return '';
+      const fmt = (n) => n >= 1000 ? `${Math.round(n/1000)}k` : String(n);
+      const sym = job.currency === 'INR' ? '₹' : job.currency === 'USD' ? '$' : (job.currency || '');
+      if (job.salary_max) return `${sym}${fmt(job.salary_min)}–${fmt(job.salary_max)}`;
+      return `${sym}${fmt(job.salary_min)}+`;
+    },
+
+    timeAgo(isoStr) {
+      if (!isoStr) return '';
+      const diff = Date.now() - new Date(isoStr).getTime();
+      const days = Math.floor(diff / 86400000);
+      if (days === 0) return 'today';
+      if (days === 1) return '1d ago';
+      if (days < 30) return `${days}d ago`;
+      return `${Math.floor(days/30)}mo ago`;
+    },
+  };
+}
+</script>
+</body>
+</html>

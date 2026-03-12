@@ -1,0 +1,55 @@
+skills:
+  - Python
+  - LLMs
+  - RAG
+  - LangChain
+  - LlamaIndex
+  - Prompt Engineering
+  - Fine-tuning
+  - Hugging Face Transformers
+  - FastAPI
+  - PostgreSQL
+  - SQLAlchemy
+  - Docker
+  - AWS
+  - PyTorch
+  - scikit-learn
+  - NLP
+  - Vector Databases
+  - Pinecone
+  - Weaviate
+  - OpenAI API
+  - Anthropic API
+  - MLflow
+  - Git
+
+experience_years: 4.0
+
+current_role: "Machine Learning Engineer"
+
+target_roles:
+  - "Senior ML Engineer"
+  - "Senior AI Engineer"
+  - "GenAI Engineer"
+  - "LLM Engineer"
+  - "AI/ML Lead"
+  - "Research Engineer"
+
+preferred_locations:
+  - "Remote"
+  - "Bengaluru"
+  - "Bangalore"
+  - "India"
+
+min_salary_usd: 80000    # $80k/yr USD for remote international roles
+min_salary_inr: 2500000  # ₹25 LPA for India-based roles
+
+profile_summary: |
+  Experienced ML/AI engineer based in Bengaluru with 4 years building production ML systems.
+  Deep expertise in Large Language Models (LLMs), Retrieval-Augmented Generation (RAG),
+  and GenAI application development using LangChain, LlamaIndex, and OpenAI/Anthropic APIs.
+  Strong Python background with FastAPI for serving ML models.
+  Built end-to-end RAG pipelines with vector databases (Pinecone, Weaviate) at scale.
+  Looking for senior IC or tech lead roles at AI-first companies building with LLMs.
+  Open to fully remote positions globally or hybrid roles in Bengaluru.
+  Prefer companies working on cutting-edge AI products, research, or developer tools.
